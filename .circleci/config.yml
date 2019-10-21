@@ -11,9 +11,9 @@ commands:
               aws ecs describe-clusters                   
 
 jobs:
-  docker:
+  testing_assume_role:    
+    docker:
       - image: circleci/python:3.7
-  test:    
     steps:
       - checkout
       - test-orb/assume-role:
