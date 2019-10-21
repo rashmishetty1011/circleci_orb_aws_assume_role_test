@@ -11,6 +11,8 @@ commands:
               aws ecs describe-clusters                   
 
 jobs:
+  docker:
+      - image: circleci/python:3.7
   test:    
     steps:
       - checkout
