@@ -16,7 +16,7 @@ jobs:
       - image: circleci/python:3.7
     steps:
       - checkout
-      - test-orb/assume-role:
+      - aws_assume_role_test/assume-role:
           account: $AWS_ACCOUNT
           profile_name: circlecitest
           role: 'LBH_Circle_CI_Deployment_Role'
