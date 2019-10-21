@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  test-orb: lbh-test/aws_assume_role_test@dev:0.1
+  aws_assume_role_test: lbh-test/aws_assume_role_test@dev:0.1
 
 commands:
   test_aws_resources:
