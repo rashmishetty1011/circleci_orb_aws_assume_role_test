@@ -21,3 +21,7 @@ jobs:
           profile_name: circlecitest
           role: 'LBH_Circle_CI_Deployment_Role'
       - test_aws_resources
+workflows:
+  main:
+    jobs:
+      - testing_assume_role
