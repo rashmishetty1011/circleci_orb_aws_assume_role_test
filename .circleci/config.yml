@@ -54,6 +54,7 @@ orbs:
           aws_assume_role:
             executor: default
             steps:
+              - checkout
               - assume_role:
                     account: $AWS_ACCOUNT
                     profile_name: circlecitest
