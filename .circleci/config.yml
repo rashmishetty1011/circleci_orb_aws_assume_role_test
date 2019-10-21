@@ -1,0 +1,65 @@
+version: 2.1
+description: # The purpose of this orb
+
+orbs:
+    aws-test-orb:
+        orbs:
+            aws-cli: circleci/aws-cli@0.1.9
+        executors:
+          default:
+            docker:
+              - image: "circleci/node:9.6.1"
+        commands:
+            assume_role:
+               description: Installs AWS CLI, setup the IAM user keys and assume specified role
+               parameters:
+                  access_key_id:
+                    description: AWS Access Key ID Variable Name
+                    type: env_var_name
+                    default: AWS_ACCESS_KEY_ID
+                  secret_access_key:
+                    description: AWS Secret Access Key Variable Name
+                    type: env_var_name
+                    default: AWS_SECRET_ACCESS_KEY
+                  profile_name:
+                    description: AWS Profile Name
+                    type: string
+                    default: default
+                  account:
+                    description: AWS account in which the assumed role is
+                    type: string
+                  role:
+                    description: Role name
+                    type: string
+               steps:
+                  - aws-cli/install
+                  - run: |
+                      aws configure set aws_access_key_id $<< parameters.access_key_id >> --profile << parameters.profile_name >> && \
+                      aws configure set aws_secret_access_key $<< parameters.secret_access_key >> --profile << parameters.profile_name >> && \
+                      aws configure set region eu-west-2
+                      
+                  - run: |
+                      assumed_role=$(aws sts assume-role --role-arn "arn:aws:iam::<< parameters.account >>:role/<< parameters.role >>" --role-session-name "RoleSession1" --profile << parameters.profile_name >>) 
+                      echo "export AWS_ACCESS_KEY_ID=$(echo $assumed_role | jq .Credentials.AccessKeyId | xargs)" >> $BASH_ENV 
+                      echo "export AWS_SECRET_ACCESS_KEY=$(echo $assumed_role | jq .Credentials.SecretAccessKey | xargs)" >> $BASH_ENV
+                      echo "export AWS_SESSION_TOKEN=$(echo $assumed_role | jq .Credentials.SessionToken | xargs)" >> $BASH_ENV
+            test_ecr_describe:
+               description: tests whether the assumed role works
+               steps:
+                 - run: |
+                        temp_value=$(aws ecs describe-clusters) && \
+                        echo $temp_value
+        jobs:
+          aws_assume_role:
+            executor: default
+            steps:
+              - assume_role:
+                    account: $AWS_ACCOUNT
+                    profile_name: circlecitest
+                    role: 'LBH_Circle_CI_Deployment_Role'
+              - test_ecr_describe
+
+workflows:
+  main:
+    jobs:
+      - aws-test-orb/aws_assume_role
