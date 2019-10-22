@@ -1,0 +1,148 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@3.0.0
+  sonarcloud: sonarsource/sonarcloud@1.0.0
+  aws_assume_role_test: lbh-test/aws_assume_role_test@dev:0.1 #to be replaced with prod orb
+
+
+  #deploy-en can be an orb
+commands:
+  deploy-env:
+    description: "Sets ecs-deploy to update a service with a target docker image"
+    parameters:
+      cluster-name:
+        type: string
+      service-name:
+        type: string
+      image-tag:
+        type: string
+    steps:
+      - run:
+          name: Install ecs deploy
+          command: |
+            sudo pip install ecs-deploy
+      - run:
+          name: Premote target image
+          command: |
+            ecs deploy \
+            --no-deregister \
+            --access-key-id $AWS_ACCESS_KEY_ID \
+            --secret-access-key $AWS_SECRET_ACCESS_KEY \
+            --timeout 1800 \
+            --region $AWS_REGION \
+            << parameters.cluster-name >> \
+            << parameters.service-name >> \
+            -t << parameters.image-tag >>
+          no_output_timeout: 30m
+#proposed orb finishes here
+jobs:
+  check:
+    docker:
+      - image: circleci/python:3.7
+    steps:
+      - checkout
+      - sonarcloud/scan
+      - aws_assume_role_test/assume_role: #replaced with aws assume role orb
+          account: $AWS_ACCOUNT
+          profile_name: circlecitest
+          role: 'LBH_Circle_CI_Deployment_Role'
+      - aws-ecr/ecr-login
+      - setup_remote_docker
+      - run:
+          name: build
+          command: docker-compose build property-api-test #replace project name with env variable
+      - run:
+          name: Run tests
+          command: docker-compose up property-api-test #replace project name with env variable
+
+  deploy-to-development:
+    docker:
+      - image: circleci/python:3.7
+    steps:
+      - deploy-env:
+          cluster-name: 'hackney-apps-development'
+          service-name: 'property-api-development'
+          image-tag: "$CIRCLE_SHA1"
+
+  deploy-to-staging:
+    docker:
+      - image: circleci/python:3.7
+    steps:
+      - deploy-env:
+          cluster-name: 'hackney-apps-staging'
+          service-name: 'property-api-staging'
+          image-tag: "$CIRCLE_SHA1"
+
+  deploy-to-production:
+    docker:
+      - image: circleci/python:3.7
+    steps:
+      - deploy-env:
+          cluster-name: 'ecs-hackney-apps'
+          service-name: 'property-api-production'
+          image-tag: "$CIRCLE_SHA1"
+
+workflows:
+  build-and-deploy-to-development:
+      jobs:
+      - check
+      - aws-ecr/build_and_push_image:
+          name: build_and_push_image
+          dockerfile: ./property-api/Dockerfile #replace project name with env variable
+          path: ./property-api #replace project name with env variable
+          account-url: AWS_ECR_HOST
+          repo: $AWS_ECR_PATH
+          aws-access-key-id: AWS_ACCESS_KEY_ID #this will be the temp credentials generated
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY #this will be the temp credentials generated
+          region: AWS_REGION
+          tag: "${CIRCLE_SHA1}"
+          filters:
+            branches:
+              only: development
+
+      - deploy-to-development:
+          requires:
+            - check
+            - build_and_push_image
+          filters:
+            branches:
+              only: development #dev releases from development branch
+  build-and-deploy-to-staging-and-production:
+      jobs:
+      - check
+      - aws-ecr/build_and_push_image:
+          name: build_and_push_image
+          dockerfile: ./property-api/Dockerfile #replace project name with env variable
+          path: ./property-api #replace project name with env variable
+          account-url: AWS_ECR_HOST
+          repo: $AWS_ECR_PATH
+          aws-access-key-id: AWS_ACCESS_KEY_ID #this will be the temp credentials generated
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY #this will be the temp credentials generated
+          region: AWS_REGION
+          tag: "${CIRCLE_SHA1}"
+          filters:
+            branches:
+              only: master #deploy image to staging/prod ecr repo???
+      - deploy-to-staging:
+          requires:
+            - check
+            - build_and_push_image
+          filters:
+            branches:
+              only: master #release to staging from master branch
+
+      - permit-production-release:
+          type: approval
+          requires:
+            - deploy-to-staging
+          filters:
+            branches:
+              only: master
+
+      - deploy-to-production:
+          requires:
+            - permit-production-release
+          filters:
+            branches:
+              only: master
